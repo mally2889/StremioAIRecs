@@ -232,13 +232,13 @@ builder.defineCatalogHandler(async ({ config, type, id }) => {
 });
 
 // ---------- HTTP server ----------
-// ---- keep everything above as-is ----
+// ===== keep everything above as-is =====
 
 // Create the Stremio interface ONCE
 const iface = builder.getInterface();
 
-// Vercel/Render-friendly handler with safe fallbacks
-module.exports = async (req, res) => {
+// Single request handler used for both serverless and Node server
+function requestHandler(req, res) {
   try {
     if (req.url === '/health') {
       res.statusCode = 200;
@@ -252,19 +252,23 @@ module.exports = async (req, res) => {
       return res.end(JSON.stringify(manifest));
     }
 
-    return iface(req, res); // catalog/meta/stream routes
+    // Delegate to Stremio Addon SDK interface
+    return iface(req, res);
   } catch (e) {
     console.error('Top-level handler error:', e && e.stack ? e.stack : e);
     res.statusCode = 500;
     res.setHeader('content-type', 'text/plain');
     return res.end('Server error: ' + (e?.message || 'unknown'));
   }
-};
+}
 
-// Local dev server AND Render (Render runs `node index.js`)
+// Export handler for serverless-like platforms
+module.exports = requestHandler;
+
+// Start HTTP server when run with `node index.js` (Render runs this)
 if (require.main === module) {
   const http = require('http');
-  const PORT = process.env.PORT || 7080; // ✅ Render needs this
-  http.createServer((req, res) => module.exports(req, res))
+  const PORT = process.env.PORT || 7080; // Render provides PORT
+  http.createServer(requestHandler)
       .listen(PORT, () => console.log(`AI Recs (Gemini) listening on http://localhost:${PORT}/manifest.json`));
 }
