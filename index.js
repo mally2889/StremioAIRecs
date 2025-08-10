@@ -232,25 +232,12 @@ builder.defineCatalogHandler(async ({ config, type, id }) => {
 });
 
 // ---------- HTTP server ----------
+// ---- keep everything above as-is ----
+
+// Create the Stremio interface ONCE
 const iface = builder.getInterface();
 
-// Export a Vercel-compatible handler
-module.exports = (req, res) => iface(req, res);
-
-// Local dev server (only when you run `node index.js`)
-if (require.main === module) {
-  require('http')
-    .createServer((req, res) => iface(req, res))
-    .listen(7080, () =>
-      console.log('AI Recs (Gemini) at http://localhost:7080/manifest.json')
-    );
-}
-
-// keep everything above as-is
-
-const iface = builder.getInterface();
-
-// ✅ Vercel-friendly handler with safe fallbacks & logs
+// Vercel/Render-friendly handler with safe fallbacks
 module.exports = async (req, res) => {
   try {
     if (req.url === '/health') {
@@ -259,15 +246,13 @@ module.exports = async (req, res) => {
       return res.end('ok');
     }
 
-    // Serve manifest directly so it never fails due to other logic
     if (req.url === '/manifest.json') {
       res.statusCode = 200;
       res.setHeader('content-type', 'application/json; charset=utf-8');
       return res.end(JSON.stringify(manifest));
     }
 
-    // All other routes (catalog, etc.) go through the SDK
-    return iface(req, res);
+    return iface(req, res); // catalog/meta/stream routes
   } catch (e) {
     console.error('Top-level handler error:', e && e.stack ? e.stack : e);
     res.statusCode = 500;
@@ -276,9 +261,10 @@ module.exports = async (req, res) => {
   }
 };
 
-// Local dev server only (when running `node index.js`)
+// Local dev server AND Render (Render runs `node index.js`)
 if (require.main === module) {
-  require('http')
-    .createServer((req, res) => module.exports(req, res))
-    .listen(7080, () => console.log('AI Recs (Gemini) at http://localhost:7080/manifest.json'));
+  const http = require('http');
+  const PORT = process.env.PORT || 7080; // ✅ Render needs this
+  http.createServer((req, res) => module.exports(req, res))
+      .listen(PORT, () => console.log(`AI Recs (Gemini) listening on http://localhost:${PORT}/manifest.json`));
 }
